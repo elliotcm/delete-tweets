@@ -1,0 +1,39 @@
+#!/usr/bin/env ruby
+
+require "json"
+
+json_string = File.read(ARGF)
+json = JSON.parse(json_string.gsub(/window.YTD.tweet.part0 = /, "")
+
+tweet_ids = json.map { |t| t["id_str"] }
+
+client_config = JSON.parse(File.read(File.join(File.dirname(__FILE__), *%w[.. config user.json])))
+twitter = Twitter::REST::Client.new do |config|
+  config.consumer_key        = client_config["consumer_key"]
+  config.consumer_secret     = client_config["consumer_secret"]
+  config.access_token        = client_config["access_token"]
+  config.access_token_secret = client_config["access_token_secret"]
+end
+
+db = SQLite3::Database.new("delete_tweets")
+db.execute <<-SQL
+  CREATE TABLE IF NOT EXISTS deleted_tweets (
+    id VARCHAR(255)
+  )
+SQL
+
+exclude_ids = JSON.parse(File.read(File.join(File.dirname(__FILE__), *%w[.. config exclude_ids.json])))
+
+begin
+  deleted_ids = db.execute("SELECT id FROM deleted_tweets").map { |row| row["id"] }
+
+  ids_to_delete = tweet_ids - exclude_ids - deleted_ids
+
+  ids_to_delete.each do |id|
+    twitter.destroy_tweet(id)
+    db.execute("INSERT INTO deleted_tweets (id) VALUES (?)", id)
+  end
+rescue Twitter::Error::TooManyRequests => error
+  sleep error.rate_limit.reset_in + 1
+  retry
+end
