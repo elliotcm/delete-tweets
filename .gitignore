@@ -1,2 +1,3 @@
 config/user.json
 config/exclude_ids.json
+*.sqlite3

@@ -18,7 +18,7 @@ twitter = Twitter::REST::Client.new do |config|
   config.access_token_secret = client_config["access_token_secret"]
 end
 
-db = SQLite3::Database.new("delete_tweets")
+db = SQLite3::Database.new("delete_tweets.sqlite3")
 db.execute <<-SQL
   CREATE TABLE IF NOT EXISTS deleted_tweets (
     id VARCHAR(255)
@@ -46,7 +46,7 @@ rescue Twitter::Error::TooManyRequests => error
   sleep error.rate_limit.reset_in + 1
   retry
 rescue Twitter::Error::Forbidden
-  puts "403: Suspended"
+  puts "403: Suspended (#{Time.now.to_s})"
   sleep (60 * 60) # 1 hour
 end
 
