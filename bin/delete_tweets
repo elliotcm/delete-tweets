@@ -36,7 +36,9 @@ begin
 
   ids_to_delete = tweet_ids - exclude_ids - deleted_ids
 
-  ids_to_delete.each do |id|
+  ids_to_delete.each_with_index do |id, index|
+    break if index >= 95
+
     twitter.destroy_tweet(id)
     db.execute("INSERT INTO deleted_tweets (id) VALUES (?)", id)
     print "."
@@ -45,9 +47,6 @@ begin
 rescue Twitter::Error::TooManyRequests => error
   sleep error.rate_limit.reset_in + 1
   retry
-rescue Twitter::Error::Forbidden
-  puts "403: Suspended (#{Time.now.to_s})"
-  sleep (60 * 60) # 1 hour
 end
 
 puts "done."
