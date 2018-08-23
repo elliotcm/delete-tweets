@@ -1,11 +1,14 @@
 #!/usr/bin/env ruby
 
 require "json"
+require "twitter"
+require "sqlite3"
 
-json_string = File.read(ARGF)
-json = JSON.parse(json_string.gsub(/window.YTD.tweet.part0 = /, "")
+json = JSON.parse(ARGF.read.gsub(/window.YTD.tweet.part0 = /, ""))
 
 tweet_ids = json.map { |t| t["id_str"] }
+
+puts "Processing #{tweet_ids.count} ids"
 
 client_config = JSON.parse(File.read(File.join(File.dirname(__FILE__), *%w[.. config user.json])))
 twitter = Twitter::REST::Client.new do |config|
@@ -24,16 +27,27 @@ SQL
 
 exclude_ids = JSON.parse(File.read(File.join(File.dirname(__FILE__), *%w[.. config exclude_ids.json])))
 
+puts "Excluding #{exclude_ids.count} ids"
+
 begin
-  deleted_ids = db.execute("SELECT id FROM deleted_tweets").map { |row| row["id"] }
+  deleted_ids = db.execute("SELECT id FROM deleted_tweets").map(&:first)
+
+  puts "#{deleted_ids.count} of #{tweet_ids.count} deleted"
 
   ids_to_delete = tweet_ids - exclude_ids - deleted_ids
 
   ids_to_delete.each do |id|
     twitter.destroy_tweet(id)
     db.execute("INSERT INTO deleted_tweets (id) VALUES (?)", id)
+    print "."
+    STDOUT.flush
   end
 rescue Twitter::Error::TooManyRequests => error
   sleep error.rate_limit.reset_in + 1
   retry
+rescue Twitter::Error::Forbidden
+  puts "403: Suspended"
+  sleep (60 * 60) # 1 hour
 end
+
+puts "done."
